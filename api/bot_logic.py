@@ -3,8 +3,11 @@ import os
 import re
 
 import httpx
+from dotenv import load_dotenv
 
 import sheets_client
+
+load_dotenv()
 
 _WHATSAPP_TOKEN: str = os.environ["WHATSAPP_TOKEN"]
 _PHONE_ID: str = os.environ["WHATSAPP_PHONE_ID"]
@@ -16,7 +19,7 @@ _TIME_RANGE_RE = re.compile(
     r"^(\d{1,2}:\d{2}(?:AM|PM))-(\d{1,2}:\d{2}(?:AM|PM))$",
     re.IGNORECASE,
 )
-_BREAK_RE = re.compile(r"^\d{2}:\d{2}$")
+_BREAK_RE = re.compile(r"^(\d{2}):(\d{2})$")
 _AMOUNT_RE = re.compile(r"^\d+\.\d{2}$")
 
 
@@ -45,6 +48,7 @@ async def _reply(to: str, body: str) -> None:
 # ---------------------------------------------------------------------------
 
 def _parse_hours(value: str) -> float:
+    value = value.strip().replace(",", "")
     if ":" in value:
         h, m = value.split(":", 1)
         return int(h) + int(m) / 60
@@ -72,8 +76,12 @@ async def _cmd_time(sender: str, arg: str, *, set2: bool = False) -> None:
 
 async def _cmd_break(sender: str, arg: str) -> None:
     arg = arg.strip()
-    if not _BREAK_RE.match(arg):
+    m = _BREAK_RE.match(arg)
+    if not m:
         await _reply(sender, "Invalid format. Use HH:MM — e.g. /break 00:30")
+        return
+    if int(m.group(2)) > 59:
+        await _reply(sender, "Invalid break duration. Minutes must be between 00 and 59.")
         return
     row = await asyncio.to_thread(sheets_client.find_today_row)
     await asyncio.to_thread(sheets_client.write_break, row, arg)

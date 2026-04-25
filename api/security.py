@@ -2,6 +2,10 @@ import hashlib
 import hmac
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 _APP_SECRET: bytes = os.environ["WHATSAPP_APP_SECRET"].encode()
 
 

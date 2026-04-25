@@ -11,14 +11,21 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 
+# Load env before importing sibling modules that read os.environ at import time.
+load_dotenv()
+
 import bot_logic
 import security
 
-load_dotenv()
-
 _VERIFY_TOKEN: str = os.environ["VERIFY_TOKEN"]
-# WhatsApp payloads omit the leading '+', so normalise once at startup.
-_ADMIN_PHONE: str = os.environ["ADMIN_PHONE_NUMBER"].lstrip("+")
+
+
+def _normalize_phone(value: str) -> str:
+    return "".join(ch for ch in value if ch.isdigit())
+
+
+# WhatsApp payloads can vary in formatting; compare normalized digit-only values.
+_ADMIN_PHONE: str = _normalize_phone(os.environ["ADMIN_PHONE_NUMBER"])
 
 app = FastAPI(docs_url=None, redoc_url=None)
 
@@ -85,7 +92,7 @@ async def receive_webhook(
         return {"status": "ignored"}
 
     sender, text = message
-    if sender != _ADMIN_PHONE:
+    if _normalize_phone(sender) != _ADMIN_PHONE:
         return {"status": "ignored"}
 
     await bot_logic.handle(sender, text)

@@ -1,10 +1,14 @@
 import json
 import os
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import gspread
+from dotenv import load_dotenv
 from google.oauth2.service_account import Credentials
+
+load_dotenv()
 
 _SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 _SPREADSHEET_ID: str = os.environ["SPREADSHEET_ID"]
@@ -65,7 +69,9 @@ def read_rate_value() -> float:
     col_m = _worksheet().col_values(13)
     for i in range(len(col_m) - 1, -1, -1):
         if col_m[i].strip():
-            return float(col_m[i].strip().lstrip("$"))
+            cleaned = re.sub(r"[^0-9.\-]", "", col_m[i].strip())
+            if cleaned:
+                return float(cleaned)
     raise ValueError("No rate value found in column M.")
 
 
