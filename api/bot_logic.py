@@ -16,7 +16,7 @@ _GRAPH_URL = f"https://graph.facebook.com/v17.0/{_PHONE_ID}/messages"
 
 # Regex patterns — validated once at import time.
 _TIME_RANGE_RE = re.compile(
-    r"^(\d{1,2}:\d{2}(?:AM|PM))-(\d{1,2}:\d{2}(?:AM|PM))$",
+    r"^(\d{1,2}):([0-5]\d)(AM|PM)-(\d{1,2}):([0-5]\d)(AM|PM)$",
     re.IGNORECASE,
 )
 _BREAK_RE = re.compile(r"^(\d{2}):(\d{2})$")
@@ -64,7 +64,15 @@ async def _cmd_time(sender: str, arg: str, *, set2: bool = False) -> None:
     if not m:
         await _reply(sender, "Invalid format. Example: /time 1:30PM-8:00PM")
         return
-    start, end = m.group(1).upper(), m.group(2).upper()
+
+    start_hour = int(m.group(1))
+    end_hour = int(m.group(4))
+    if not (1 <= start_hour <= 12 and 1 <= end_hour <= 12):
+        await _reply(sender, "Invalid time. Hours must be between 1 and 12.")
+        return
+
+    start = f"{start_hour}:{m.group(2)}{m.group(3).upper()}"
+    end = f"{end_hour}:{m.group(5)}{m.group(6).upper()}"
     row = await asyncio.to_thread(sheets_client.find_today_row)
     if set2:
         await asyncio.to_thread(sheets_client.write_time_set2, row, start, end)

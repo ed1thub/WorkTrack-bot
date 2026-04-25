@@ -11,7 +11,7 @@ from google.oauth2.service_account import Credentials
 load_dotenv()
 
 _SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-_SPREADSHEET_ID: str = os.environ["SPREADSHEET_ID"]
+_SPREADSHEET_ID: str = os.environ.get("SPREADSHEET_ID") or os.environ.get("GOOGLE_SHEET_ID") or ""
 _CREDS_DICT: dict = json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"])
 _TZ = ZoneInfo("Australia/Sydney")
 
@@ -22,8 +22,10 @@ _ws: gspread.Worksheet | None = None
 def _worksheet() -> gspread.Worksheet:
     global _ws
     if _ws is None:
+        if not _SPREADSHEET_ID:
+            raise ValueError("Missing SPREADSHEET_ID (or GOOGLE_SHEET_ID) environment variable.")
         creds = Credentials.from_service_account_info(_CREDS_DICT, scopes=_SCOPES)
-        gc = gspread.Client(auth=creds)
+        gc = gspread.authorize(creds)
         _ws = gc.open_by_key(_SPREADSHEET_ID).sheet1
     return _ws
 
