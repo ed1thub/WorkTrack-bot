@@ -1,0 +1,6 @@
+.env
+projectinfo.md
+__pycache__/
+*.pyc
+*.pyo
+.vercel/
