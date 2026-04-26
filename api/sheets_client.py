@@ -1,18 +1,14 @@
-import json
-import os
-import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import gspread
-from dotenv import load_dotenv
 from google.oauth2.service_account import Credentials
 
-load_dotenv()
+import config
 
 _SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-_SPREADSHEET_ID: str = os.environ.get("SPREADSHEET_ID") or os.environ.get("GOOGLE_SHEET_ID") or ""
-_CREDS_DICT: dict = json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"])
+_SPREADSHEET_ID: str = config.SPREADSHEET_ID
+_CREDS_DICT: dict = config.GOOGLE_CREDENTIALS_JSON
 _TZ = ZoneInfo("Australia/Sydney")
 
 # Lazily initialised; reused across warm Vercel invocations.
@@ -22,8 +18,6 @@ _ws: gspread.Worksheet | None = None
 def _worksheet() -> gspread.Worksheet:
     global _ws
     if _ws is None:
-        if not _SPREADSHEET_ID:
-            raise ValueError("Missing SPREADSHEET_ID (or GOOGLE_SHEET_ID) environment variable.")
         creds = Credentials.from_service_account_info(_CREDS_DICT, scopes=_SCOPES)
         gc = gspread.authorize(creds)
         _ws = gc.open_by_key(_SPREADSHEET_ID).sheet1
@@ -58,23 +52,19 @@ def find_previous_week_summary_row() -> int:
 # ---------------------------------------------------------------------------
 
 def read_hours_due() -> str:
-    """Return the bottom-most non-empty value from column K (Hours Due)."""
-    col_k = _worksheet().col_values(11)
-    for i in range(len(col_k) - 1, -1, -1):
-        if col_k[i].strip():
-            return col_k[i].strip()
-    raise ValueError("No value found in column K (Hours Due).")
+    """Return the grand total hours due from cell N1 (=SUM(K:K) formula)."""
+    value = _worksheet().acell("N1").value
+    if not value or not value.strip():
+        raise ValueError("Cell N1 is empty — ensure the =SUM(K:K) formula is in place.")
+    return value.strip()
 
 
-def read_rate_value() -> float:
-    """Return the hourly rate from the bottom-most non-empty cell in column M."""
-    col_m = _worksheet().col_values(13)
-    for i in range(len(col_m) - 1, -1, -1):
-        if col_m[i].strip():
-            cleaned = re.sub(r"[^0-9.\-]", "", col_m[i].strip())
-            if cleaned:
-                return float(cleaned)
-    raise ValueError("No rate value found in column M.")
+def read_payment_due() -> str:
+    """Return the total payment due from cell O1 (=N1*24*31.23 formula)."""
+    value = _worksheet().acell("O1").value
+    if not value or not value.strip():
+        raise ValueError("Cell O1 is empty — ensure the =N1*24*31.23 formula is in place.")
+    return value.strip().replace("$", "").replace(",", "")
 
 
 # ---------------------------------------------------------------------------

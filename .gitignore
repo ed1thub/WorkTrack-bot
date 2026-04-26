@@ -1,6 +1,8 @@
 .env
-projectinfo.md
+.venv/
+.claude/
 __pycache__/
 *.pyc
 *.pyo
 .vercel/
+.vercel
