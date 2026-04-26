@@ -67,6 +67,9 @@ async def _cmd_break(chat_id: int, arg: str) -> None:
     if int(m.group(2)) > 59:
         await _reply(chat_id, "Invalid break duration. Minutes must be between 00 and 59.")
         return
+    if int(m.group(1)) > 23:
+        await _reply(chat_id, "Invalid break duration. Hours must be between 00 and 23.")
+        return
     row = await asyncio.to_thread(sheets_client.find_today_row)
     await asyncio.to_thread(sheets_client.write_break, row, arg)
     await _reply(chat_id, f"Break logged: {arg}")
