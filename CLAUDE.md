@@ -43,24 +43,34 @@ Telegram → POST /api/webhook
 
 ## Sheet Layout
 
-Fixed column layout assumed in `sheet1`. Timezone hardcoded to `Australia/Sydney`.
+Auto-provisioned on first use — no manual setup needed. Timezone hardcoded to `Australia/Sydney`.
+
+**Row 1 (auto-created headers + formulas):**
 
 | Column | Content |
 |--------|---------|
-| B | Day name ("Monday" etc.) — used by `find_today_row()` |
+| A–K | Column headers: Date, Day, Start 1, End 1, Start 2, End 2, Break, (blank), Week Hours, Payment, Hours |
+| N | Formula `=SUM(K:K)` — total hours due |
+| O | Formula `=N1*24*31.23` — payment due |
+
+**Data rows (row 2+, auto-provisioned per week):**
+
+| Column | Content |
+|--------|---------|
+| A | ISO date `YYYY-MM-DD` — matched by `find_today_row()` |
+| B | Day name ("Monday" etc.) |
 | C, D | Set 1 start/end times |
 | E, F | Set 2 start/end times |
 | G | Break duration (HH:MM) |
-| I | Weekly summary — non-empty = completed week (used by `find_previous_week_summary_row()`) |
+| I | Weekly hours total — non-empty = completed week (used by `find_previous_week_summary_row()`) |
 | J | Payment received |
-| N1 | Formula `=SUM(K:K)` — hours due |
-| O1 | Formula `=N1*24*31.23` — payment due |
+| K | Formula: hours worked (auto-calculated) |
 
 ## Supported Commands
 
 | Command | Arg format |
 |---------|-----------|
-| `/time`, `/timeupdateset1` | `H:MMAM/PM-H:MMAM/PM` → writes cols C/D |
+| `/time`, `/timeupdateset1` | `H:MM AM-H:MM PM` → writes cols C/D |
 | `/timeupdateset2` | same format → writes cols E/F |
 | `/break` | `HH:MM` → writes col G |
 | `/gotpaid` | amount (strips `$` and `,`) → writes col J on previous week row |

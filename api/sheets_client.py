@@ -50,6 +50,17 @@ def _hours_formula(row: int) -> str:
 # Sheet provisioning
 # ---------------------------------------------------------------------------
 
+def _setup_sheet_headers(ws: gspread.Worksheet) -> None:
+    """Write column headers to row 1 if not already present."""
+    if ws.acell("B1").value:
+        return
+    ws.update(
+        [["Date", "Day", "Start 1", "End 1", "Start 2", "End 2", "Break", "", "Week Hours", "Payment", "Hours"]],
+        "A1:K1",
+        raw=True,
+    )
+
+
 def _setup_totals_row(ws: gspread.Worksheet) -> None:
     """Write =SUM(K:K) into N1 and pay formula into O1 if empty."""
     if not ws.acell("N1").value:
@@ -70,9 +81,10 @@ def _provision_week(monday: date) -> bool:
     if monday_str in col_a:
         return False  # already provisioned
 
+    _setup_sheet_headers(ws)
     _setup_totals_row(ws)
     all_rows = ws.get_all_values()
-    next_row = max(2, len(all_rows) + 1)  # row 1 reserved for N1/O1 formulas
+    next_row = max(2, len(all_rows) + 1)  # row 1 = headers + N1/O1 formulas
 
     rows_data: list[list[str]] = []
     for i, day in enumerate(_WEEKDAYS):
@@ -88,8 +100,12 @@ def _provision_week(monday: date) -> bool:
             _hours_formula(row_num),  # K: auto-calculated hours
         ])
 
-    # Summary row: blank A so find_today_row never accidentally matches it
-    rows_data.append(["", "Summary", "", "", "", "", "", "", "", "", ""])
+    # Summary row: "S:YYYY-MM-DD" in col A lets find_previous_week_summary_row
+    # locate this row directly without positional arithmetic.
+    # The "S:" prefix prevents find_today_row from ever matching it.
+    week_end = monday + timedelta(days=4)
+    week_label = f"Week of {monday.strftime('%d %b')}–{week_end.strftime('%d %b %Y')}"
+    rows_data.append([f"S:{monday.strftime('%Y-%m-%d')}", week_label, "", "", "", "", "", "", "", "", ""])
 
     end_row = next_row + len(rows_data) - 1
     ws.update(rows_data, f"A{next_row}:K{end_row}", raw=False)
@@ -140,25 +156,39 @@ def find_previous_week_summary_row() -> int:
     ws = _worksheet()
     col_a = ws.col_values(1)
 
-    # New-format weeks: Monday row is identified by date in col A.
-    # Summary row is always created 5 rows after Monday.
+    # Primary: summary rows provisioned after the S: marker fix have "S:YYYY-MM-DD" in col A.
+    # This is unambiguous — no positional arithmetic, no col I dependency.
+    marker = f"S:{prev_monday_str}"
+    for i, val in enumerate(col_a):
+        if val.strip() == marker:
+            return i + 1  # 1-indexed
+
+    # Secondary: older provisioned weeks — Monday date in col A, summary is Mon+5 rows.
     for i, val in enumerate(col_a):
         if val.strip() == prev_monday_str:
-            return i + 6  # (i+1) = monday 1-indexed, +5 = summary row
+            return i + 6  # Monday row (i+1) + 5 weekday rows = summary
 
-    # Old-format fallback: search backwards for non-empty col I but stop
-    # before current week starts so we never land on this week's summary.
-    monday_str = _week_monday().strftime("%Y-%m-%d")
+    # Tertiary: oldest sheets — blank-A summary rows with a non-empty col I marker.
     current_week_start = next(
-        (i for i, v in enumerate(col_a) if v.strip() == monday_str),
+        (i for i, val in enumerate(col_a) if val.strip() == _week_monday().strftime("%Y-%m-%d")),
         len(col_a),
     )
+    col_b = ws.col_values(2)
     col_i = ws.col_values(9)
-    for i in range(current_week_start - 1, -1, -1):
-        if i < len(col_i) and col_i[i].strip():
-            return i + 1
+    legacy_summary_idx = current_week_start - 1
+    if (
+        legacy_summary_idx >= 0
+        and legacy_summary_idx < len(col_b)
+        and legacy_summary_idx < len(col_i)
+        and col_b[legacy_summary_idx].strip() == "Summary"
+        and col_i[legacy_summary_idx].strip()
+    ):
+        return legacy_summary_idx + 1
 
-    raise ValueError("No completed previous week found. Make sure last week's hours were logged.")
+    raise ValueError(
+        f"No data found for the week of {prev_monday.strftime('%d %b %Y')}. "
+        "Use the bot during that week first, then record the payment."
+    )
 
 
 # ---------------------------------------------------------------------------
