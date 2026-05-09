@@ -108,25 +108,17 @@ Every push to the main branch automatically deploys to Vercel.
        runs-on: ubuntu-latest
        steps:
          - uses: actions/checkout@v3
-         
-         - name: Install Vercel CLI
-           run: npm install -g vercel
-         
-         - name: Pull Vercel environment
-           run: vercel pull --yes --environment=production
-           env:
-             VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-         
-         - name: Deploy to Vercel
-           run: vercel deploy --prod
-           env:
-             VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+         - uses: vercel/action@v5
+           with:
+             vercel-token: ${{ secrets.VERCEL_TOKEN }}
+             vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+             vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
    ```
 
 3. **Add secrets to GitHub:**
-   - Go to repo Settings → Secrets and variables → Actions
-   - Create new repository secret: `VERCEL_TOKEN`
-   - Get the token from [Vercel dashboard](https://vercel.com/account/tokens)
+   - Go to repo Settings → Secrets → New repository secret
+   - Add: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`
+   - Get values from [Vercel dashboard](https://vercel.com/account/tokens)
 
 ### Workflow
 

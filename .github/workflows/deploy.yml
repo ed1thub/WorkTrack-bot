@@ -11,15 +11,9 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       
-      - name: Install Vercel CLI
-        run: npm install -g vercel
-      
-      - name: Pull Vercel environment
-        run: vercel pull --yes --environment=production
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      
       - name: Deploy to Vercel
-        run: vercel deploy --prod
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        uses: vercel/action@v5
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
