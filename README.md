@@ -1,51 +1,103 @@
 # WorkTrack Bot
 
-WorkTrack Bot is a serverless FastAPI backend for Telegram that receives a signed webhook, verifies the sender, and writes work-tracking data into a private Google Sheet.
+A personal Telegram bot that tracks work hours and payments in a private Google Sheet. Built with FastAPI, deployed serverlessly on Vercel.
 
-## What it does
+## Features
 
-- Accepts Telegram webhook updates on `/api/webhook`
-- Verifies the `X-Telegram-Bot-Api-Secret-Token` header
-- Ignores any chat that is not the configured admin chat ID
-- Supports time, break, payment, hours due, and payment due commands
-- Exposes a simple health check at `/api/health`
+- Logs shift times, breaks, and payments via Telegram commands
+- Stores all data in a private Google Sheet you own
+- Weekly summary cron job every Friday night
+- Single-user design — only your chat ID can trigger any action
 
-## Environment
+## Commands
 
-Create a local `.env` from the example file:
+| Command | Format | Description |
+|---------|--------|-------------|
+| `/time` | `H:MM AM-H:MM PM` | Log today's shift (set 1) |
+| `/timeupdateset1` | `H:MM AM-H:MM PM` | Same as `/time` |
+| `/timeupdateset2` | `H:MM AM-H:MM PM` | Log a second shift on the same day |
+| `/break` | `HH:MM` | Log unpaid break duration |
+| `/gotpaid` | `<amount>` | Record last week's payment (e.g. `500` or `$500.00`) |
+| `/hoursdue` | — | Show total hours worked across all weeks |
+| `/paymentdue` | — | Show total payment owed across all weeks |
+| `/help` | — | List all commands |
+
+## Architecture
+
+```
+Telegram
+  └─▶ POST /api/webhook
+        ├─ Verify X-Telegram-Bot-Api-Secret-Token   (api/security.py)
+        ├─ Reject non-admin chat IDs                (api/index.py)
+        ├─ Parse and validate command               (api/bot_logic.py)
+        └─ Write to Google Sheet                    (api/sheets_client.py)
+
+Vercel Cron (Friday 11:30 PM AEST)
+  └─▶ GET /api/cron/weekly-summary
+        └─ Send weekly hours summary via Telegram
+```
+
+| Module | Role |
+|--------|------|
+| `api/index.py` | FastAPI entry point, route definitions |
+| `api/config.py` | Env var validation — raises `RuntimeError` at startup if any are missing |
+| `api/security.py` | Constant-time webhook token verification (`hmac.compare_digest`) |
+| `api/bot_logic.py` | Regex input validation, command dispatch, Telegram reply sender |
+| `api/sheets_client.py` | gspread wrapper for reading and writing the Google Sheet |
+
+## Setup
+
+### 1. Clone and install
+
+```bash
+git clone https://github.com/ed1thub/WorkTrack-bot.git
+cd WorkTrack-bot
+pip install -r requirements.txt
+```
+
+### 2. Configure environment
 
 ```bash
 cp .env.example .env
 ```
 
-Required variables:
+Fill in `.env`:
 
-- `TELEGRAM_BOT_TOKEN` - Telegram bot token from BotFather
-- `TELEGRAM_SECRET_TOKEN` - Random webhook secret used by Telegram
-- `ADMIN_CHAT_ID` - Your personal Telegram chat ID
-- `GOOGLE_CREDENTIALS_JSON` - Service account JSON, stored as a single-line JSON string
-- `SPREADSHEET_ID` or `GOOGLE_SHEET_ID` - Google Sheet key
+| Variable | Description |
+|----------|-------------|
+| `TELEGRAM_BOT_TOKEN` | Token from [@BotFather](https://t.me/BotFather) |
+| `TELEGRAM_SECRET_TOKEN` | Random string — must match what you pass to Telegram's `setWebhook` |
+| `ADMIN_CHAT_ID` | Your personal Telegram chat ID (use [@userinfobot](https://t.me/userinfobot)) |
+| `GOOGLE_CREDENTIALS_JSON` | Service account JSON as a single-line string |
+| `SPREADSHEET_ID` | Google Sheet document ID from its URL |
 
-## Local development
-
-Install dependencies with:
+### 3. Register the webhook
 
 ```bash
-pip install -r requirements.txt
+curl "https://api.telegram.org/bot<TOKEN>/setWebhook" \
+  -d "url=https://your-deployment.vercel.app/api/webhook" \
+  -d "secret_token=<TELEGRAM_SECRET_TOKEN>"
 ```
 
-Run the app with your preferred ASGI server. For example:
+### 4. Run locally
 
 ```bash
 uvicorn api.index:app --reload
 ```
 
-## Deployment notes
+## Deployment
 
-- Vercel uses `api/index.py` as the serverless entry point
-- The repo intentionally ignores `.env`, `.vercel/`, and local Claude settings
-- The webhook only accepts the configured Telegram secret token and admin chat ID
+Push to `main` — Vercel deploys automatically via its native GitHub integration.
 
-## Security posture
+Add the same environment variables to your Vercel project dashboard before deploying.
 
-The application keeps secret handling centralized in `api/config.py`, validates webhook requests before command processing, and rejects malformed command input before writing to Google Sheets.
+## Security
+
+- Webhook requests verified with `hmac.compare_digest` before any processing
+- Only the configured `ADMIN_CHAT_ID` can trigger any command — all other messages silently dropped
+- No database — all data lives in your own Google Sheet
+- Secrets validated at startup; app refuses to start with missing config
+
+## License
+
+MIT

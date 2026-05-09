@@ -9,3 +9,6 @@ __pycache__/
 .env*.local
 CLAUDE.md
 node_modules/
+.pytest_cache/
+*.egg-info/
+dist/
