@@ -84,7 +84,7 @@ Fixed column layout assumed in `sheet1`. Timezone hardcoded to `Australia/Sydney
 
 ## Automated Deployment
 
-Every push to the master branch automatically deploys to Vercel.
+Every push to the main branch automatically deploys to Vercel.
 
 ### Setup (One-time)
 
@@ -101,7 +101,7 @@ Every push to the master branch automatically deploys to Vercel.
    on:
      push:
        branches:
-         - master
+         - main
 
    jobs:
      deploy:
@@ -127,8 +127,8 @@ Every push to the master branch automatically deploys to Vercel.
 git add .
 git commit -m "feat: update command logic"
 
-# Push to master
-git push origin master
+# Push to main
+git push origin main
 # GitHub Actions automatically runs → Vercel deploys → Live in ~30 seconds
 ```
 

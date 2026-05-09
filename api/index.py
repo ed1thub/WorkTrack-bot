@@ -74,13 +74,16 @@ async def receive_webhook(
 
 
 @app.get("/api/cron/weekly-summary", status_code=200)
-async def weekly_summary_cron(request: Request) -> dict:
+async def weekly_summary_cron(
+    request: Request,
+    _: None = Depends(_require_valid_token)
+) -> dict:
     """Called by Vercel cron every Friday at 11:30 PM AEST (13:30 UTC)."""
-    if config.CRON_SECRET:
-        auth = request.headers.get("Authorization", "")
-        expected = f"Bearer {config.CRON_SECRET}"
-        if not hmac.compare_digest(auth, expected):
-            raise HTTPException(status_code=401, detail="Unauthorized")
+    # Additional cron-specific auth check if needed
+    auth = request.headers.get("Authorization", "")
+    expected = f"Bearer {config.CRON_SECRET or ''}"
+    if not hmac.compare_digest(auth, expected):
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
     try:
         await bot_logic.send_weekly_summary()
@@ -88,7 +91,6 @@ async def weekly_summary_cron(request: Request) -> dict:
         return {"status": "error", "detail": str(exc)}
 
     return {"status": "ok"}
-
 
 @app.get("/privacy")
 async def privacy_policy() -> HTMLResponse:
