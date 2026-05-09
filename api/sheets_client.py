@@ -149,6 +149,20 @@ def find_today_row() -> int:
     raise ValueError(f"No row for {today_str}. Is today a weekend?")
 
 
+def _provision_summary_row_only(ws: gspread.Worksheet, monday: date) -> int:
+    """Append a payment-summary row for a manually-entered week. Returns 1-indexed row."""
+    all_rows = ws.get_all_values()
+    next_row = max(2, len(all_rows) + 1)
+    week_end = monday + timedelta(days=4)
+    week_label = f"Week of {monday.strftime('%d %b')}–{week_end.strftime('%d %b %Y')}"
+    ws.update(
+        [[f"S:{monday.strftime('%Y-%m-%d')}", week_label, "", "", "", "", "", "", "", "", ""]],
+        f"A{next_row}:K{next_row}",
+        raw=False,
+    )
+    return next_row
+
+
 def find_previous_week_summary_row() -> int:
     """Return the 1-indexed summary row for last week (never this week's)."""
     prev_monday = _week_monday() - timedelta(days=7)
@@ -185,10 +199,9 @@ def find_previous_week_summary_row() -> int:
     ):
         return legacy_summary_idx + 1
 
-    raise ValueError(
-        f"No data found for the week of {prev_monday.strftime('%d %b %Y')}. "
-        "Use the bot during that week first, then record the payment."
-    )
+    # Nothing found: week was manually entered without bot format.
+    # Append a summary-only row so the payment has a row to land in.
+    return _provision_summary_row_only(ws, prev_monday)
 
 
 # ---------------------------------------------------------------------------
