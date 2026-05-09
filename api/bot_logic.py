@@ -10,8 +10,9 @@ import sheets_client
 _TOKEN: str = config.TELEGRAM_BOT_TOKEN
 _TELEGRAM_API = f"https://api.telegram.org/bot{_TOKEN}"
 
+# Accepts "1:30 PM-6:00 PM", "1:30PM-6:00PM", or spaces around the dash
 _TIME_RANGE_RE = re.compile(
-    r"^(\d{1,2}):([0-5]\d)(AM|PM)-(\d{1,2}):([0-5]\d)(AM|PM)$",
+    r"^(\d{1,2}):([0-5]\d)\s?(AM|PM)\s?-\s?(\d{1,2}):([0-5]\d)\s?(AM|PM)$",
     re.IGNORECASE,
 )
 _BREAK_RE = re.compile(r"^(\d{2}):(\d{2})$")
@@ -38,7 +39,7 @@ async def _reply(chat_id: int, text: str) -> None:
 async def _cmd_time(chat_id: int, arg: str, *, set2: bool = False) -> None:
     m = _TIME_RANGE_RE.match(arg.strip())
     if not m:
-        await _reply(chat_id, "Invalid format. Example: /time 1:30PM-8:00PM")
+        await _reply(chat_id, "Invalid format. Example: /time 1:30 PM-6:00 PM")
         return
 
     start_hour = int(m.group(1))
@@ -47,8 +48,10 @@ async def _cmd_time(chat_id: int, arg: str, *, set2: bool = False) -> None:
         await _reply(chat_id, "Invalid time. Hours must be between 1 and 12.")
         return
 
-    start = f"{start_hour}:{m.group(2)}{m.group(3).upper()}"
-    end = f"{end_hour}:{m.group(5)}{m.group(6).upper()}"
+    start = f"{start_hour}:{m.group(2)} {m.group(3).upper()}"
+    end = f"{end_hour}:{m.group(5)} {m.group(6).upper()}"
+
+    await asyncio.to_thread(sheets_client.ensure_current_week_rows)
     row = await asyncio.to_thread(sheets_client.find_today_row)
     if set2:
         await asyncio.to_thread(sheets_client.write_time_set2, row, start, end)
@@ -70,6 +73,8 @@ async def _cmd_break(chat_id: int, arg: str) -> None:
     if int(m.group(1)) > 23:
         await _reply(chat_id, "Invalid break duration. Hours must be between 00 and 23.")
         return
+
+    await asyncio.to_thread(sheets_client.ensure_current_week_rows)
     row = await asyncio.to_thread(sheets_client.find_today_row)
     await asyncio.to_thread(sheets_client.write_break, row, arg)
     await _reply(chat_id, f"Break logged: {arg}")
@@ -99,6 +104,16 @@ async def _cmd_hours_due(chat_id: int) -> None:
 async def _cmd_payment_due(chat_id: int) -> None:
     total = await asyncio.to_thread(sheets_client.read_payment_due)
     await _reply(chat_id, f"Payment due: ${total}")
+
+
+# ---------------------------------------------------------------------------
+# Weekly cron summary (called by /api/cron/weekly-summary)
+# ---------------------------------------------------------------------------
+
+async def send_weekly_summary() -> None:
+    hours, week_label = await asyncio.to_thread(sheets_client.calculate_and_record_week_hours)
+    text = f"Weekly summary — week of {week_label}\nTotal hours worked: {hours} hrs"
+    await _reply(config.ADMIN_CHAT_ID, text)
 
 
 # ---------------------------------------------------------------------------

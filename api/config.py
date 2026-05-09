@@ -40,3 +40,6 @@ SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "").strip() or os.getenv("GOOGLE_SH
 
 if not SPREADSHEET_ID:
     raise RuntimeError("Missing required environment variable: SPREADSHEET_ID (or GOOGLE_SHEET_ID)")
+
+# Set automatically by Vercel for cron job authentication; optional for local dev.
+CRON_SECRET: str = os.getenv("CRON_SECRET", "").strip()
