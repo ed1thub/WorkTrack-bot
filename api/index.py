@@ -1,38 +1,46 @@
 import hmac
 import sys
-import traceback
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-# ---------------------------------------------------------------------------
-# Diagnostic import — catch the real error and surface it via /api/health
-# ---------------------------------------------------------------------------
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse
 
-_startup_error: str | None = None
-_imports_ok = False
+import config
+import bot_logic
+import sheets_client
+import security
 
-try:
-    from fastapi import Depends, FastAPI, HTTPException, Request
-    from fastapi.responses import HTMLResponse
-    import config
-    import bot_logic
-    import sheets_client
-    import security
-    _imports_ok = True
-except Exception as _e:
-    _startup_error = f"{type(_e).__name__}: {_e}\n\n{traceback.format_exc()}"
-    # Need at least FastAPI to serve the error route
-    try:
-        from fastapi import FastAPI, Request
-        from fastapi.responses import HTMLResponse
-    except Exception:
-        raise  # fastapi itself broken — nothing we can do
-
-if _imports_ok:
-    _ADMIN_CHAT_ID: int = config.ADMIN_CHAT_ID
+_ADMIN_CHAT_ID: int = config.ADMIN_CHAT_ID
 
 app = FastAPI(docs_url=None, redoc_url=None)
+
+
+# ---------------------------------------------------------------------------
+# Dependency: secret token guard
+# ---------------------------------------------------------------------------
+
+async def _require_valid_token(request: Request) -> None:
+    header = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+    if not security.verify_token(header):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+# ---------------------------------------------------------------------------
+# Payload extraction helper
+# ---------------------------------------------------------------------------
+
+def _extract_message(payload: dict) -> tuple[int, str] | None:
+    """Return (chat_id, text) or None for non-text / unsupported update types."""
+    try:
+        msg = payload["message"]
+        text = msg.get("text")
+        if not text:
+            return None
+        return msg["chat"]["id"], text
+    except (KeyError, TypeError):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -41,69 +49,51 @@ app = FastAPI(docs_url=None, redoc_url=None)
 
 @app.get("/api/health")
 async def health() -> dict:
-    if _startup_error:
-        return {"status": "error", "detail": _startup_error}
     return {"status": "ok"}
 
 
-if _imports_ok:
-    async def _require_valid_token(request: Request) -> None:
-        header = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-        if not security.verify_token(header):
+@app.post("/api/webhook", status_code=200)
+async def receive_webhook(
+    request: Request,
+    _: None = Depends(_require_valid_token),
+) -> dict:
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    message = _extract_message(payload)
+    if message is None:
+        return {"status": "ignored"}
+
+    chat_id, text = message
+    if chat_id != _ADMIN_CHAT_ID:
+        return {"status": "ignored"}
+
+    await bot_logic.handle(chat_id, text)
+    return {"status": "ok"}
+
+
+@app.get("/api/cron/weekly-summary", status_code=200)
+async def weekly_summary_cron(request: Request) -> dict:
+    """Called by Vercel cron every Friday at 11:30 PM AEST (13:30 UTC)."""
+    if config.CRON_SECRET:
+        auth = request.headers.get("Authorization", "")
+        expected = f"Bearer {config.CRON_SECRET}"
+        if not hmac.compare_digest(auth, expected):
             raise HTTPException(status_code=401, detail="Unauthorized")
 
-    def _extract_message(payload: dict) -> tuple[int, str] | None:
-        try:
-            msg = payload["message"]
-            text = msg.get("text")
-            if not text:
-                return None
-            return msg["chat"]["id"], text
-        except (KeyError, TypeError):
-            return None
+    try:
+        await bot_logic.send_weekly_summary()
+    except Exception as exc:
+        return {"status": "error", "detail": str(exc)}
 
-    from fastapi import Depends
+    return {"status": "ok"}
 
-    @app.post("/api/webhook", status_code=200)
-    async def receive_webhook(
-        request: Request,
-        _: None = Depends(_require_valid_token),
-    ) -> dict:
-        try:
-            payload = await request.json()
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid JSON")
 
-        message = _extract_message(payload)
-        if message is None:
-            return {"status": "ignored"}
-
-        chat_id, text = message
-        if chat_id != _ADMIN_CHAT_ID:
-            return {"status": "ignored"}
-
-        await bot_logic.handle(chat_id, text)
-        return {"status": "ok"}
-
-    @app.get("/api/cron/weekly-summary", status_code=200)
-    async def weekly_summary_cron(request: Request) -> dict:
-        """Called by Vercel cron every Friday at 11:30 PM AEST (13:30 UTC)."""
-        if config.CRON_SECRET:
-            auth = request.headers.get("Authorization", "")
-            expected = f"Bearer {config.CRON_SECRET}"
-            if not hmac.compare_digest(auth, expected):
-                raise HTTPException(status_code=401, detail="Unauthorized")
-
-        try:
-            await bot_logic.send_weekly_summary()
-        except Exception as exc:
-            return {"status": "error", "detail": str(exc)}
-
-        return {"status": "ok"}
-
-    @app.get("/privacy")
-    async def privacy_policy() -> HTMLResponse:
-        html = """<!DOCTYPE html>
+@app.get("/privacy")
+async def privacy_policy() -> HTMLResponse:
+    html = """<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -150,4 +140,4 @@ if _imports_ok:
   <footer>&copy; 2025 WorkTrack Bot. All rights reserved.</footer>
 </body>
 </html>"""
-        return HTMLResponse(content=html)
+    return HTMLResponse(content=html)
