@@ -1,16 +1,21 @@
 import hmac
 import sys
+import traceback
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
-
-import config
-import bot_logic
-import sheets_client
-import security
+try:
+    from fastapi import Depends, FastAPI, HTTPException, Request
+    from fastapi.responses import HTMLResponse
+    import config
+    import bot_logic
+    import sheets_client
+    import security
+except Exception as _import_err:
+    print(f"IMPORT_FAIL {type(_import_err).__name__}: {_import_err}", file=sys.stderr, flush=True)
+    traceback.print_exc(file=sys.stderr)
+    raise
 
 _ADMIN_CHAT_ID: int = config.ADMIN_CHAT_ID
 
