@@ -51,7 +51,6 @@ async def _cmd_time(chat_id: int, arg: str, *, set2: bool = False) -> None:
     start = f"{start_hour}:{m.group(2)} {m.group(3).upper()}"
     end = f"{end_hour}:{m.group(5)} {m.group(6).upper()}"
 
-    await asyncio.to_thread(sheets_client.ensure_current_week_rows)
     row = await asyncio.to_thread(sheets_client.find_today_row)
     if set2:
         await asyncio.to_thread(sheets_client.write_time_set2, row, start, end)
@@ -74,7 +73,6 @@ async def _cmd_break(chat_id: int, arg: str) -> None:
         await _reply(chat_id, "Invalid break duration. Hours must be between 00 and 23.")
         return
 
-    await asyncio.to_thread(sheets_client.ensure_current_week_rows)
     row = await asyncio.to_thread(sheets_client.find_today_row)
     await asyncio.to_thread(sheets_client.write_break, row, arg)
     await _reply(chat_id, f"Break logged: {arg}")
@@ -114,8 +112,6 @@ async def send_weekly_summary() -> None:
     hours, week_label = await asyncio.to_thread(sheets_client.calculate_and_record_week_hours)
     text = f"Weekly summary — week of {week_label}\nTotal hours worked: {hours} hrs"
     await _reply(config.ADMIN_CHAT_ID, text)
-    # Automatically provision next week's rows after sending summary
-    await asyncio.to_thread(sheets_client.ensure_next_week_rows)
 
 
 # ---------------------------------------------------------------------------
