@@ -94,6 +94,20 @@ async def _cmd_got_paid(chat_id: int, arg: str) -> None:
     await _reply(chat_id, f"Payment recorded: ${formatted}")
 
 
+async def _cmd_help(chat_id: int) -> None:
+    text = (
+        "Commands:\n"
+        "/time H:MM AM-H:MM PM — log today's shift (set 1)\n"
+        "/timeupdateset2 H:MM AM-H:MM PM — log a second shift on the same day\n"
+        "/break HH:MM — log unpaid break duration\n"
+        "/gotpaid <amount> — record last week's payment (e.g. /gotpaid 500)\n"
+        "/hoursdue — show total hours worked across all weeks\n"
+        "/paymentdue — show total payment owed across all weeks\n"
+        "/help — show this list"
+    )
+    await _reply(chat_id, text)
+
+
 async def _cmd_hours_due(chat_id: int) -> None:
     hours = await asyncio.to_thread(sheets_client.read_hours_due)
     await _reply(chat_id, f"Hours due: {hours}")
@@ -126,6 +140,7 @@ _COMMANDS = {
     "/gotpaid":        _cmd_got_paid,
     "/hoursdue":       lambda c, _: _cmd_hours_due(c),
     "/paymentdue":     lambda c, _: _cmd_payment_due(c),
+    "/help":           lambda c, _: _cmd_help(c),
 }
 
 
