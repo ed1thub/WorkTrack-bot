@@ -114,6 +114,8 @@ async def send_weekly_summary() -> None:
     hours, week_label = await asyncio.to_thread(sheets_client.calculate_and_record_week_hours)
     text = f"Weekly summary — week of {week_label}\nTotal hours worked: {hours} hrs"
     await _reply(config.ADMIN_CHAT_ID, text)
+    # Automatically provision next week's rows after sending summary
+    await asyncio.to_thread(sheets_client.ensure_next_week_rows)
 
 
 # ---------------------------------------------------------------------------

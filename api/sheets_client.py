@@ -58,15 +58,17 @@ def _setup_totals_row(ws: gspread.Worksheet) -> None:
         ws.update_acell("O1", "=N1*24*31.23")
 
 
-def ensure_current_week_rows() -> None:
-    """Append Mon-Fri rows + summary row for current week if absent."""
-    monday = _week_monday()
+def _provision_week(monday: date) -> bool:
+    """
+    Provision Mon-Fri rows + summary row for the given monday.
+    Returns True if newly provisioned, False if already existed.
+    """
     monday_str = monday.strftime("%Y-%m-%d")
     ws = _worksheet()
 
     col_a = ws.col_values(1)
     if monday_str in col_a:
-        return  # already provisioned
+        return False  # already provisioned
 
     _setup_totals_row(ws)
     all_rows = ws.get_all_values()
@@ -91,6 +93,30 @@ def ensure_current_week_rows() -> None:
 
     end_row = next_row + len(rows_data) - 1
     ws.update(rows_data, f"A{next_row}:K{end_row}", raw=False)
+    return True
+
+
+def ensure_current_week_rows() -> None:
+    """Append Mon-Fri rows + summary row for current week if absent."""
+    _provision_week(_week_monday())
+
+
+def provision_weeks_ahead(num_weeks: int = 2) -> None:
+    """
+    Provision current week and the next N weeks automatically.
+    Idempotent: safe to call multiple times.
+    Useful on startup to pre-create multiple weeks.
+    """
+    monday = _week_monday()
+    for i in range(num_weeks + 1):  # +1 to include current week
+        week_monday = monday + timedelta(weeks=i)
+        _provision_week(week_monday)
+
+
+def ensure_next_week_rows() -> None:
+    """Provision next week's rows (called by Friday cron)."""
+    next_monday = _week_monday() + timedelta(weeks=1)
+    _provision_week(next_monday)
 
 
 # ---------------------------------------------------------------------------
