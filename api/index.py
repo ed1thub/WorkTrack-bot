@@ -1,4 +1,3 @@
-import asyncio
 import hmac
 import sys
 from pathlib import Path
@@ -16,20 +15,6 @@ import security
 _ADMIN_CHAT_ID: int = config.ADMIN_CHAT_ID
 
 app = FastAPI(docs_url=None, redoc_url=None)
-
-
-# ---------------------------------------------------------------------------
-# Startup hook: auto-provision weeks on app start
-# ---------------------------------------------------------------------------
-
-@app.on_event("startup")
-async def provision_weeks_on_startup() -> None:
-    """Provision current week and next 2 weeks when app starts."""
-    try:
-        await asyncio.to_thread(sheets_client.provision_weeks_ahead, 2)
-    except Exception:
-        # Non-fatal: commands will provision on-demand if startup fails
-        pass
 
 
 # ---------------------------------------------------------------------------
