@@ -12,9 +12,13 @@ CREATE TABLE IF NOT EXISTS work_entries (
 );
 
 CREATE TABLE IF NOT EXISTS weekly_payments (
-    id               SERIAL PRIMARY KEY,
-    week_start       DATE NOT NULL UNIQUE,
-    payment_received NUMERIC(10,2),
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id                  SERIAL PRIMARY KEY,
+    week_start          DATE NOT NULL UNIQUE,
+    payment_received    NUMERIC(10,2),
+    total_mins_override INTEGER NOT NULL DEFAULT 0,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Idempotent migration: adds column when table already exists without it
+ALTER TABLE weekly_payments ADD COLUMN IF NOT EXISTS total_mins_override INTEGER NOT NULL DEFAULT 0;

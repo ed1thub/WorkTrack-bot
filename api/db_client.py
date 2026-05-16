@@ -145,26 +145,38 @@ async def upsert_payment(week_start: date, amount: str) -> None:
 # Read helpers
 # ---------------------------------------------------------------------------
 
+async def _total_worked_and_paid(conn) -> tuple[int, float]:
+    """Return (total_worked_mins, total_paid) across all records."""
+    worked = await conn.fetchval(
+        "SELECT COALESCE(SUM(worked_mins), 0) FROM work_entries"
+    )
+    override = await conn.fetchval(
+        "SELECT COALESCE(SUM(total_mins_override), 0) FROM weekly_payments"
+    )
+    paid = await conn.fetchval(
+        "SELECT COALESCE(SUM(payment_received), 0) FROM weekly_payments"
+    )
+    return int(worked) + int(override), float(paid)
+
+
 async def read_hours_due() -> str:
     pool = await db.get_pool()
     async with pool.acquire() as conn:
-        total_mins = await conn.fetchval(
-            "SELECT COALESCE(SUM(worked_mins), 0) FROM work_entries WHERE worked_mins > 0"
-        )
-    if not total_mins:
+        total_mins, total_paid = await _total_worked_and_paid(conn)
+    if total_mins == 0:
         raise ValueError("No hours recorded yet.")
-    return f"{total_mins / 60:.2f}"
+    hours_due = total_mins / 60 - total_paid / _HOURLY_RATE
+    return f"{hours_due:.2f}"
 
 
 async def read_payment_due() -> str:
     pool = await db.get_pool()
     async with pool.acquire() as conn:
-        total_mins = await conn.fetchval(
-            "SELECT COALESCE(SUM(worked_mins), 0) FROM work_entries WHERE worked_mins > 0"
-        )
-    if not total_mins:
+        total_mins, total_paid = await _total_worked_and_paid(conn)
+    if total_mins == 0:
         raise ValueError("No hours recorded yet.")
-    return f"{total_mins / 60 * _HOURLY_RATE:.2f}"
+    payment_due = total_mins / 60 * _HOURLY_RATE - total_paid
+    return f"{payment_due:.2f}"
 
 
 # ---------------------------------------------------------------------------
