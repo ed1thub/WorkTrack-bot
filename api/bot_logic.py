@@ -1,11 +1,10 @@
-import asyncio
 import re
 from decimal import Decimal, InvalidOperation
 
 import httpx
 
 import config
-import sheets_client
+import db_client
 
 _TOKEN: str = config.TELEGRAM_BOT_TOKEN
 _TELEGRAM_API = f"https://api.telegram.org/bot{_TOKEN}"
@@ -51,12 +50,12 @@ async def _cmd_time(chat_id: int, arg: str, *, set2: bool = False) -> None:
     start = f"{start_hour}:{m.group(2)} {m.group(3).upper()}"
     end = f"{end_hour}:{m.group(5)} {m.group(6).upper()}"
 
-    row = await asyncio.to_thread(sheets_client.find_today_row)
+    today = await db_client.find_today_entry()
     if set2:
-        await asyncio.to_thread(sheets_client.write_time_set2, row, start, end)
+        await db_client.update_time_set2(today, start, end)
         await _reply(chat_id, f"Set 2 logged: {start} - {end}")
     else:
-        await asyncio.to_thread(sheets_client.write_time_set1, row, start, end)
+        await db_client.update_time_set1(today, start, end)
         await _reply(chat_id, f"Time logged: {start} - {end}")
 
 
@@ -73,8 +72,9 @@ async def _cmd_break(chat_id: int, arg: str) -> None:
         await _reply(chat_id, "Invalid break duration. Hours must be between 00 and 23.")
         return
 
-    row = await asyncio.to_thread(sheets_client.find_today_row)
-    await asyncio.to_thread(sheets_client.write_break, row, arg)
+    break_mins = int(m.group(1)) * 60 + int(m.group(2))
+    today = await db_client.find_today_entry()
+    await db_client.update_break(today, break_mins)
     await _reply(chat_id, f"Break logged: {arg}")
 
 
@@ -89,8 +89,8 @@ async def _cmd_got_paid(chat_id: int, arg: str) -> None:
     except InvalidOperation:
         await _reply(chat_id, "Error: Could not read the amount. Please check your formatting.")
         return
-    row = await asyncio.to_thread(sheets_client.find_previous_week_summary_row)
-    await asyncio.to_thread(sheets_client.write_got_paid, row, formatted)
+    week_start = await db_client.find_previous_week_start()
+    await db_client.upsert_payment(week_start, formatted)
     await _reply(chat_id, f"Payment recorded: ${formatted}")
 
 
@@ -109,12 +109,12 @@ async def _cmd_help(chat_id: int) -> None:
 
 
 async def _cmd_hours_due(chat_id: int) -> None:
-    hours = await asyncio.to_thread(sheets_client.read_hours_due)
+    hours = await db_client.read_hours_due()
     await _reply(chat_id, f"Hours due: {hours}")
 
 
 async def _cmd_payment_due(chat_id: int) -> None:
-    total = await asyncio.to_thread(sheets_client.read_payment_due)
+    total = await db_client.read_payment_due()
     await _reply(chat_id, f"Payment due: ${total}")
 
 
@@ -123,7 +123,7 @@ async def _cmd_payment_due(chat_id: int) -> None:
 # ---------------------------------------------------------------------------
 
 async def send_weekly_summary() -> None:
-    hours, week_label = await asyncio.to_thread(sheets_client.calculate_and_record_week_hours)
+    hours, week_label = await db_client.calculate_week_hours()
     text = f"Weekly summary — week of {week_label}\nTotal hours worked: {hours} hrs"
     await _reply(config.ADMIN_CHAT_ID, text)
 

@@ -1,6 +1,8 @@
 import hmac
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import AsyncGenerator
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -9,12 +11,20 @@ from fastapi.responses import HTMLResponse
 
 import config
 import bot_logic
-import sheets_client
+import db
 import security
 
 _ADMIN_CHAT_ID: int = config.ADMIN_CHAT_ID
 
-app = FastAPI(docs_url=None, redoc_url=None)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    await db.init_db()
+    yield
+    await db.close_pool()
+
+
+app = FastAPI(docs_url=None, redoc_url=None, lifespan=lifespan)
 
 
 # ---------------------------------------------------------------------------
@@ -110,34 +120,34 @@ async def privacy_policy() -> HTMLResponse:
 </head>
 <body>
   <h1>Privacy Policy</h1>
-    <p><strong>WorkTrack Bot</strong> &mdash; Last updated: April 2026</p>
+  <p><strong>WorkTrack Bot</strong> &mdash; Last updated: May 2026</p>
 
   <h2>What this app does</h2>
-  <p>WorkTrack Bot is a personal productivity tool that receives Telegram messages from a single authorised user and writes work-hour data (shift times, breaks, and payments) to a private Google Sheet owned by that user.</p>
+  <p>WorkTrack Bot is a personal productivity tool that receives Telegram messages from a single authorised user and records work-hour data (shift times, breaks, and payments) to a private PostgreSQL database.</p>
 
   <h2>Data collected</h2>
   <ul>
     <li><strong>Telegram messages</strong> &mdash; only slash-command messages from the authorised chat ID are processed. All other messages are discarded immediately without storage.</li>
-    <li><strong>Work-hour data</strong> &mdash; shift start/end times, break durations, and payment amounts are written to the user&rsquo;s own Google Sheet. No data is stored by this application itself.</li>
+    <li><strong>Work-hour data</strong> &mdash; shift start/end times, break durations, and payment amounts are stored in a private database. No data is shared with third parties.</li>
   </ul>
 
   <h2>Data sharing</h2>
   <p>No data is sold, shared, or disclosed to any third party. The only external services used are:</p>
   <ul>
     <li><strong>Telegram Bot API</strong> &mdash; to receive and send messages.</li>
-    <li><strong>Google Sheets API</strong> &mdash; to write data to the user&rsquo;s own spreadsheet.</li>
+    <li><strong>Neon (PostgreSQL)</strong> &mdash; to persist work-hour records in a private database.</li>
   </ul>
 
   <h2>Data retention</h2>
-  <p>This application does not maintain a database or log storage. Message content is processed in memory and immediately discarded. Data in the Google Sheet is controlled entirely by the sheet owner.</p>
+  <p>Data is stored in a private PostgreSQL database controlled entirely by the owner. Message content is processed in memory and not logged beyond the database writes triggered by commands.</p>
 
   <h2>Security</h2>
-  <p>All incoming webhook requests are verified using the X-Telegram-Bot-Api-Secret-Token header. Only messages from the registered authorised chat ID are acted upon.</p>
+  <p>All incoming webhook requests are verified using the X-Telegram-Bot-Api-Secret-Token header. Only messages from the registered authorised chat ID are acted upon. The database connection uses TLS encryption.</p>
 
   <h2>Contact</h2>
   <p>For any questions about this policy, contact: <a href="mailto:www.siamhasan189@gmail.com">www.siamhasan189@gmail.com</a></p>
 
-  <footer>&copy; 2025 WorkTrack Bot. All rights reserved.</footer>
+  <footer>&copy; 2026 WorkTrack Bot. All rights reserved.</footer>
 </body>
 </html>"""
     return HTMLResponse(content=html)
