@@ -36,5 +36,13 @@ ADMIN_CHAT_ID = _require_int_env("ADMIN_CHAT_ID")
 DATABASE_URL = _require_env("DATABASE_URL")
 HOURLY_RATE: float = _require_float_env("HOURLY_RATE", default=31.23)
 
+# Optional Google Sheets sync config. The bot still starts without these, but
+# log-changing commands will warn if sync is attempted while they are missing.
+SPREADSHEET_ID: str = (
+    os.getenv("SPREADSHEET_ID", "").strip()
+    or os.getenv("GOOGLE_SHEET_ID", "").strip()
+)
+GOOGLE_CREDENTIALS_JSON: str = os.getenv("GOOGLE_CREDENTIALS_JSON", "").strip()
+
 # Set automatically by Vercel for cron job authentication; optional for local dev.
 CRON_SECRET: str = os.getenv("CRON_SECRET", "").strip()

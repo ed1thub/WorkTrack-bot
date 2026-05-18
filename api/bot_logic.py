@@ -5,6 +5,7 @@ import httpx
 
 import config
 import db_client
+import sheets_client
 
 _TOKEN: str = config.TELEGRAM_BOT_TOKEN
 _TELEGRAM_API = f"https://api.telegram.org/bot{_TOKEN}"
@@ -16,6 +17,7 @@ _TIME_RANGE_RE = re.compile(
 )
 _BREAK_RE = re.compile(r"^(\d{2}):(\d{2})$")
 _AMOUNT_RE = re.compile(r"^\d+(?:\.\d{1,2})?$")
+_SHEETS_WARNING = "\nGoogle Sheets sync failed. Your database log was saved."
 
 
 # ---------------------------------------------------------------------------
@@ -35,10 +37,41 @@ async def _reply(chat_id: int, text: str) -> None:
 # Command handlers
 # ---------------------------------------------------------------------------
 
+def _ordinal_suffix(day: int) -> str:
+    if 10 <= day % 100 <= 20:
+        return "th"
+    return {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+
+
+def _format_full_date(entry_date) -> str:
+    return (
+        f"{entry_date.strftime('%A')}, "
+        f"{entry_date.day}{_ordinal_suffix(entry_date.day)} "
+        f"{entry_date.strftime('%B')}, {entry_date.year}"
+    )
+
+
+async def _sync_work_entry_warning(entry_date) -> str:
+    try:
+        entry = await db_client.read_work_entry(entry_date)
+        await sheets_client.sync_work_entry(entry)
+    except Exception:
+        return _SHEETS_WARNING
+    return ""
+
+
+async def _sync_payment_warning(week_start, amount: str) -> str:
+    try:
+        await sheets_client.sync_payment(week_start, amount)
+    except Exception:
+        return _SHEETS_WARNING
+    return ""
+
+
 async def _cmd_time(chat_id: int, arg: str, *, set2: bool = False) -> None:
     m = _TIME_RANGE_RE.match(arg.strip())
     if not m:
-        await _reply(chat_id, "Invalid format. Example: /time 1:30 PM-6:00 PM")
+        await _reply(chat_id, "Invalid format. Example: /time1 1:30 PM-6:00 PM")
         return
 
     start_hour = int(m.group(1))
@@ -53,10 +86,11 @@ async def _cmd_time(chat_id: int, arg: str, *, set2: bool = False) -> None:
     today = await db_client.find_today_entry()
     if set2:
         await db_client.update_time_set2(today, start, end)
-        await _reply(chat_id, f"Set 2 logged: {start} - {end}")
     else:
         await db_client.update_time_set1(today, start, end)
-        await _reply(chat_id, f"Time logged: {start} - {end}")
+
+    warning = await _sync_work_entry_warning(today)
+    await _reply(chat_id, f"Time logged: {start}-{end} for {_format_full_date(today)}{warning}")
 
 
 async def _cmd_break(chat_id: int, arg: str) -> None:
@@ -75,7 +109,8 @@ async def _cmd_break(chat_id: int, arg: str) -> None:
     break_mins = int(m.group(1)) * 60 + int(m.group(2))
     today = await db_client.find_today_entry()
     await db_client.update_break(today, break_mins)
-    await _reply(chat_id, f"Break logged: {arg}")
+    warning = await _sync_work_entry_warning(today)
+    await _reply(chat_id, f"Break logged: {arg}{warning}")
 
 
 async def _cmd_got_paid(chat_id: int, arg: str) -> None:
@@ -91,16 +126,18 @@ async def _cmd_got_paid(chat_id: int, arg: str) -> None:
         return
     week_start = await db_client.find_previous_week_start()
     await db_client.upsert_payment(week_start, formatted)
-    await _reply(chat_id, f"Payment recorded: ${formatted}")
+    warning = await _sync_payment_warning(week_start, formatted)
+    await _reply(chat_id, f"Payment recorded: ${formatted}{warning}")
 
 
 async def _cmd_help(chat_id: int) -> None:
     text = (
         "Commands:\n"
-        "/time H:MM AM-H:MM PM — log today's shift (set 1)\n"
-        "/timeupdateset2 H:MM AM-H:MM PM — log a second shift on the same day\n"
+        "/time1 H:MM AM-H:MM PM — log today's shift (set 1)\n"
+        "/time2 H:MM AM-H:MM PM — log a second shift on the same day\n"
         "/break HH:MM — log unpaid break duration\n"
         "/gotpaid <amount> — record last week's payment (e.g. /gotpaid 500)\n"
+        "/total — show total hours worked this week\n"
         "/hoursdue — show total hours worked across all weeks\n"
         "/paymentdue — show total payment owed across all weeks\n"
         "/help — show this list"
@@ -118,6 +155,11 @@ async def _cmd_payment_due(chat_id: int) -> None:
     await _reply(chat_id, f"Payment due: ${total}")
 
 
+async def _cmd_total(chat_id: int) -> None:
+    total = await db_client.read_current_week_total()
+    await _reply(chat_id, f"Total worked this week: {total} hrs")
+
+
 # ---------------------------------------------------------------------------
 # Weekly cron summary (called by /api/cron/weekly-summary)
 # ---------------------------------------------------------------------------
@@ -133,14 +175,14 @@ async def send_weekly_summary() -> None:
 # ---------------------------------------------------------------------------
 
 _COMMANDS = {
-    "/time":           lambda c, a: _cmd_time(c, a),
-    "/timeupdateset1": lambda c, a: _cmd_time(c, a),
-    "/timeupdateset2": lambda c, a: _cmd_time(c, a, set2=True),
-    "/break":          _cmd_break,
-    "/gotpaid":        _cmd_got_paid,
-    "/hoursdue":       lambda c, _: _cmd_hours_due(c),
-    "/paymentdue":     lambda c, _: _cmd_payment_due(c),
-    "/help":           lambda c, _: _cmd_help(c),
+    "/time1":      lambda c, a: _cmd_time(c, a),
+    "/time2":      lambda c, a: _cmd_time(c, a, set2=True),
+    "/break":      _cmd_break,
+    "/gotpaid":    _cmd_got_paid,
+    "/total":      lambda c, _: _cmd_total(c),
+    "/hoursdue":   lambda c, _: _cmd_hours_due(c),
+    "/paymentdue": lambda c, _: _cmd_payment_due(c),
+    "/help":       lambda c, _: _cmd_help(c),
 }
 
 

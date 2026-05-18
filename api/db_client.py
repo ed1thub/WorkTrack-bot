@@ -145,6 +145,22 @@ async def upsert_payment(week_start: date, amount: str) -> None:
 # Read helpers
 # ---------------------------------------------------------------------------
 
+async def read_work_entry(entry_date: date) -> dict:
+    pool = await db.get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT entry_date, start1, end1, start2, end2, break_mins, worked_mins
+            FROM work_entries
+            WHERE entry_date = $1
+            """,
+            entry_date,
+        )
+    if row is None:
+        raise ValueError("No work entry found for this date.")
+    return dict(row)
+
+
 async def _total_worked_and_paid(conn) -> tuple[int, float]:
     """Return (total_worked_mins, total_paid) across all records."""
     worked = await conn.fetchval(
@@ -177,6 +193,19 @@ async def read_payment_due() -> str:
         raise ValueError("No hours recorded yet.")
     payment_due = total_mins / 60 * _HOURLY_RATE - total_paid
     return f"{payment_due:.2f}"
+
+
+async def read_current_week_total() -> str:
+    monday = _week_monday()
+    today = _today()
+    pool = await db.get_pool()
+    async with pool.acquire() as conn:
+        total_mins = await conn.fetchval(
+            "SELECT COALESCE(SUM(worked_mins), 0) FROM work_entries"
+            " WHERE entry_date >= $1 AND entry_date <= $2",
+            monday, today,
+        )
+    return f"{((total_mins or 0) / 60):.2f}"
 
 
 # ---------------------------------------------------------------------------
